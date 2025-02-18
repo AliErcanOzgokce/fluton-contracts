@@ -8,23 +8,29 @@ import "./BridgeTestInterface.sol";
 import "./union/apps/Base.sol";
 import "./union/core/25-handler/IBCHandler.sol";
 
+import "./ZkgmLib.sol";
+
 /**
  * @title BridgeTest
  * @notice This contract is only for testing purposes and does not represent the actual Bridge contract. Therefore, it is not advised to use it in production.
  */
 contract BridgeTest is BridgeTestInterface, BridgeTestMessenger, Ownable {
     IWETH9 public immutable WETH;
+    using ZkgmLib for *;
     uint256 public fee = 100; // 1%
     address public feeReceiver = 0xBdc3f1A02e56CD349d10bA8D2B038F774ae22731;
+    bytes public targetContract;
 
     mapping(uint256 intentId => bool exists) public doesIntentExist;
 
     constructor(
         IWETH9 _wrappedNativeToken,
         IBCHandler _ibcHandler,
-        uint64 _timeout
+        uint64 _timeout,
+        bytes memory _targetContract
     ) BridgeTestMessenger(_ibcHandler, _timeout) Ownable(msg.sender) {
         WETH = _wrappedNativeToken;
+        targetContract = _targetContract;
     }
 
     function bridge(
@@ -109,20 +115,15 @@ contract BridgeTest is BridgeTestInterface, BridgeTestMessenger, Ownable {
 
         emit IntentFulfilled(intent);
 
-        // send cross chain message to settle the intent (disabled for now)
-        /* uint64 counterpartyTimeout = uint64(block.timestamp * 1e9) + timeout;
-        IntentPacket memory packet = IntentPacket({
-            intent: intent,
-            counterpartyTimeout: counterpartyTimeout
-        });
-
-        initiate(packet, counterpartyTimeout); */
+        // Convert storage bytes to memory before passing
+        bytes memory targetContractCopy = targetContract;
+        ZkgmLib.sendZkgmMessage(targetContractCopy, intent.id);
     }
 
     function onRecvPacket(
         IBCPacket calldata packet,
-        address,
-        bytes calldata
+        address relayer,
+        bytes calldata relayerMsg
     ) external virtual override onlyIBC returns (bytes memory acknowledgement) {
         IntentPacket memory pp = BridgeMessengerLib.decode(packet.data);
 
